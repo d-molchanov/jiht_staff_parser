@@ -169,23 +169,82 @@ class StaffParser:
     #         logging.info('Unable to find file: %s.')
     #     return cookies
 
+    def parse_person_properties(self, properties) -> dict:
+        splited_props = properties.text.splitlines()
+        # result = {'other': [], 'hyperlinks': []}
+        result = {}
+        other = []
+        hyperlinks = []
+        for p in splited_props:
+            col_index = p.find(':')
+            if col_index == -1:
+                other.append(p)
+            else:
+                key = p[:col_index]
+                value = p[col_index+1:]
+                result[key] = value
+            # line = p.split(':')
+            # ln = [el.strip() for el in line]
+            # if len(ln) == 2:
+            #     result[ln[0]] = ln[1]
+            # else:
+            #     result['other'].append(ln)
+        hrefs = properties.find_elements(By.TAG_NAME, 'a')
+        for h in hrefs:
+            hyperlinks.append(h.get_attribute('href'))
+        if other:
+            result['other'] = other
+        if hyperlinks:
+            result['hyperlinks'] = hyperlinks
+        # for k, v in result.items():
+        #     print(f'{k}: {v}')
+        return result
+
+    def parse_person(self, person) -> dict:
+        # !Image url should be change from 
+        # 'https://jiht.ru/upload/resize_cache/main/67e/100_100_1/image_name.JPG'
+        # to 
+        # 'https://jiht.ru/upload/main/67e/image_name.JPG'
+
+        name = person.find_element(By.CLASS_NAME, 'bx-user-name').text
+        position = person.find_element(By.CLASS_NAME, 'bx-user-post').text
+        result = {'ФИО': name, 'Должность': position}
+        properties = person.find_element(By.CLASS_NAME, 'bx-user-properties')
+        props = self.parse_person_properties(properties)
+        result.update(props)
+        image_container = person.find_element(By.CLASS_NAME, 'bx-user-image')
+        # image_url = None
+        # if 'bx-user-image-default' not in image_container.get_attribute('class'):
+        #     image_url = image_container.find_element(By.TAG_NAME, 'img').get_attribute('src') 
+        # result['image_url'] = image_url
+        result['image_url'] = (
+            image_container.find_element(By.TAG_NAME, 'img').get_attribute('src') if
+            'bx-user-image-default' not in image_container.get_attribute('class') else
+            None
+        )
+        # image_url = image_container.get_attribute('class')
+        # result['outerHTML'] = person.get_attribute('outerHTML')
+        # for k, v in result.items():
+        #     print(f'{k} -> {v}')
+        return result
+
+    def parse_page(self, browser, url: str) -> None:
+        browser.get(url)
+        users_on_page = browser.find_elements(By.CLASS_NAME, 'bx-user-info')
+        parsed_users = []
+        print(len(users_on_page))
+        print(type(users_on_page))
+        print(type(users_on_page[0]))
+        # for i, user in enumerate(users_on_page):
+        #     parsed_users.append(self.parse_person(user)) 
+        # return parsed_users
+        return users_on_page
+
     def get_staff(self, url: str) -> None:
         staff_parser = StaffParser()
         browser = staff_parser.create_browser()
         self.log_in(browser, '.env', url)
-        # user_name = os.environ.get('JIHT_LOGIN')
-        # user_password = os.environ.get('JIHT_PASSWORD')
-        # if user_name and user_password:
-        #     cookies_without_login = staff_parser.get_cookies(browser, url)
-        #     staff_parser.export_cookies(cookies_without_login, 'cookies_without_login.json')
-        #     staff_parser.log_in_via_username(browser, url, user_name, user_password)
-        #     cookies_with_login = staff_parser.get_cookies(browser, url)
-        #     staff_parser.export_cookies(cookies_with_login, 'cookies_with_login.json')            
-        # # logging.info('%s: %s', user_name, user_password)
-        # # browser = staff_parser.create_firefox_browser()
-        # # browser = staff_parser.create_chrome_browser()
-        # # cookies = staff_parser.get_cookies(browser, url)
-        # # staff_parser.export_cookies(cookies, 'cookies.json')
+        self.parse_page(browser, url)
 
     def str_cookies(self) -> str:
         cookies = self.import_cookies('cookies.json')
@@ -240,7 +299,10 @@ class StaffParser:
 
 
 def test():
-    URL = 'https://jiht.ru/'
+
+
+    # URL = 'https://jiht.ru/'
+    URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=1&filter=Y&set_filter=Y&PAGEN_1=2'
     staff_parser = StaffParser()
     staff_parser.get_staff(URL)
     # browser = staff_parser.create_browser()
@@ -257,3 +319,4 @@ def test():
 
 if __name__ == '__main__':
     test()
+
