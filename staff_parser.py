@@ -3,7 +3,7 @@ import time
 import json
 import platform
 from time import perf_counter
-from typing import List, Union, Dict
+from typing import List, Union, Dict, Optional
 import logging
 from dotenv import load_dotenv, dotenv_values
 
@@ -13,7 +13,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver as ChromeWebDriver
 from selenium.webdriver.firefox.webdriver import WebDriver as FirefoxWebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 
 
@@ -127,6 +127,20 @@ class StaffParser:
             self.update_dotenv_file(dotenv_file, data)
             return None
 
+    def save_find_element(
+        self,
+        webelement: webdriver.remote.webelement.WebElement,
+        by: str,
+        template: str
+    ) -> Optional[webdriver.remote.webelement.WebElement]:
+    # Change save to safe
+        try:
+            return webelement.find_element(by, template)
+        except NoSuchElementException as e:
+            first_part_of_error = e.msg.split(';')[0]
+            logging.debug('Cannot find webelement: %s', first_part_of_error)
+            # logging.error('Cannot find webelement: %s', first_part_of_error)
+            return None
 
     def log_in_via_username(self, browser, url, user_name, user_password) -> None:
         browser.get(url)
@@ -169,9 +183,8 @@ class StaffParser:
     #         logging.info('Unable to find file: %s.')
     #     return cookies
 
-    def parse_person_properties(self, properties) -> dict:
+    def parse_person_properties(self, properties: webdriver.remote.webelement.WebElement) -> dict:
         splited_props = properties.text.splitlines()
-        # result = {'other': [], 'hyperlinks': []}
         result = {}
         other = []
         hyperlinks = []
@@ -182,13 +195,7 @@ class StaffParser:
             else:
                 key = p[:col_index]
                 value = p[col_index+1:]
-                result[key] = value
-            # line = p.split(':')
-            # ln = [el.strip() for el in line]
-            # if len(ln) == 2:
-            #     result[ln[0]] = ln[1]
-            # else:
-            #     result['other'].append(ln)
+                result[key] = value.strip()
         hrefs = properties.find_elements(By.TAG_NAME, 'a')
         for h in hrefs:
             hyperlinks.append(h.get_attribute('href'))
@@ -196,55 +203,76 @@ class StaffParser:
             result['other'] = other
         if hyperlinks:
             result['hyperlinks'] = hyperlinks
-        # for k, v in result.items():
-        #     print(f'{k}: {v}')
         return result
 
-    def parse_person(self, person) -> dict:
+    def parse_person(self, person: webdriver.remote.webelement.WebElement) -> dict:
         # !Image url should be change from 
         # 'https://jiht.ru/upload/resize_cache/main/67e/100_100_1/image_name.JPG'
         # to 
         # 'https://jiht.ru/upload/main/67e/image_name.JPG'
-
-        name = person.find_element(By.CLASS_NAME, 'bx-user-name').text
-        position = person.find_element(By.CLASS_NAME, 'bx-user-post').text
+        name = self.save_find_element(person, By.CLASS_NAME, 'bx-user-name')
+        if name:
+            name = name.text
+        position = self.save_find_element(person, By.CLASS_NAME, 'bx-user-post')
+        if position:
+            position = position.text
         result = {'ФИО': name, 'Должность': position}
-        properties = person.find_element(By.CLASS_NAME, 'bx-user-properties')
-        props = self.parse_person_properties(properties)
-        result.update(props)
-        image_container = person.find_element(By.CLASS_NAME, 'bx-user-image')
-        # image_url = None
-        # if 'bx-user-image-default' not in image_container.get_attribute('class'):
-        #     image_url = image_container.find_element(By.TAG_NAME, 'img').get_attribute('src') 
-        # result['image_url'] = image_url
-        result['image_url'] = (
-            image_container.find_element(By.TAG_NAME, 'img').get_attribute('src') if
-            'bx-user-image-default' not in image_container.get_attribute('class') else
-            None
-        )
-        # image_url = image_container.get_attribute('class')
+        properties = self.save_find_element(person, By.CLASS_NAME, 'bx-user-properties')
+        if properties:
+            props = self.parse_person_properties(properties)
+            result.update(props)
+        image = self.save_find_element(person, By.TAG_NAME, 'img')
+        if image:
+            result['image_url'] = image.get_attribute('src')
         # result['outerHTML'] = person.get_attribute('outerHTML')
-        # for k, v in result.items():
-        #     print(f'{k} -> {v}')
         return result
 
-    def parse_page(self, browser, url: str) -> None:
+    def parse_page(self, browser, url: str) -> List[webdriver.remote.webelement.WebElement]:
+        logging.info('Start parsing page: `%s`.', url)
         browser.get(url)
         users_on_page = browser.find_elements(By.CLASS_NAME, 'bx-user-info')
-        parsed_users = []
-        print(len(users_on_page))
-        print(type(users_on_page))
-        print(type(users_on_page[0]))
-        # for i, user in enumerate(users_on_page):
-        #     parsed_users.append(self.parse_person(user)) 
-        # return parsed_users
-        return users_on_page
+        parsed_users = [self.parse_person(user) for user in users_on_page]
+        logging.info('Finish parsing page: `%s`.', url)
+        return parsed_users
 
-    def get_staff(self, url: str) -> None:
+    def parse_pages(self, browser, urls: List[str]) -> dict:
+        employees = []
+        for url in urls:
+            employees.extend(self.parse_page(browser, url))
+        return employees
+
+    def get_department_pages(self, browser, url: str) -> List[str]:
+        browser.get(url)
+        nav = self.save_find_element(browser, By.CLASS_NAME, 'bx-users-nav')
+        if nav:
+            a_tags = nav.find_elements(By.TAG_NAME, 'a')
+            if a_tags:
+                last_page_url = a_tags[-1].get_attribute('href')
+                ind = last_page_url.rfind('=')
+                last_page_number = int(last_page_url[ind+1:])
+                return [f'{last_page_url[:ind+1]}{i}'for i in range(1, last_page_number+1)]
+            return [url]
+        return []
+
+    def export_staff(self, staff: List[dict], filename: str) -> None:
+        try:
+            logging.info('Start exporting staff.')
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(staff, f, ensure_ascii=False, indent=4)
+            logging.info(f'Staff are saved at {filename}.')
+        except IOError as err:
+            print(err)
+
+    def get_staff(self, url: str) -> List[dict]:
         staff_parser = StaffParser()
         browser = staff_parser.create_browser()
         self.log_in(browser, '.env', url)
-        self.parse_page(browser, url)
+        urls = self.get_department_pages(browser, url)
+        staff = self.parse_pages(browser, urls)
+        self.export_staff(staff, 'staff.json')
+        browser.close()
+        return staff
+        # self.parse_page(browser, url)
 
     def str_cookies(self) -> str:
         cookies = self.import_cookies('cookies.json')
