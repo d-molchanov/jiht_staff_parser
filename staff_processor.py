@@ -109,68 +109,33 @@ class StaffProcessor:
         #     phone_field = f'{phone_field}: {additional_number}'
         return result
 
-    def extract_phone_numbers(self, staff: List[Dict[str, str]]) -> List[str]:
-        phone_numbers = []
+    def process_departments(self, staff: List[Dict[str, str]]) -> List[Dict[str, str]]:
+        departments = {}
         for person in staff:
-            phone_number = person.get('Рабочий')
-            if phone_number:
-                additional_number = ''
-                temp = phone_number.split('доб.')
-                phone_number = temp[0]
-                if len(temp) == 2: additional_number = temp[1]
-                phone_number = phone_number.replace('8(', '(')
-                phone_number = phone_number.replace('8 (', '(')
-                phone_number = phone_number.replace('+7', '')
-                phone_number = phone_number.replace('+7 ', '')
-                phone_number = phone_number.replace(';', '(')
-                # phone_number = phone_number.replace('доб.', '(')
-                phone_number = phone_number.replace('ф.', '(')
-                phone_number = phone_number.replace('-', '')
-                phone_number = phone_number.replace('.', '')
-                phone_number = phone_number.replace(',', '(')
-                temp = [el.replace(' ', '') for el in phone_number.split('(')]
-                temp = [el for el in temp if el]
-                temp = [el.replace(')', '') for el in temp]
-                # temp = [el.replace(',', '') for el in temp]
-                temp = [f'8{el}' if len(el) == 10 else el for el in temp]
-                temp = [f'0{el}' if len(el) == 3 else el for el in temp]
-                temp_ = []
-                for el in temp:
-                    if len(el) == 4:
-                        if additional_number:
-                            additional_number = f'{additional_number},{el}'
-                        else:
-                            additional_number = el
-                    elif len(el) == 7:
-                        temp_.append(f'8495{el}')
-                    elif len(el) == 8:
-                        # Этот выбор сделан из-за ошибки на сайте, вообще нужно построить
-                        # базу данных на основе информации о подразделениях, искать там 
-                        # сотрудников схожих подразделений и подставлять телефоны и коды городов.
-                        temp_.append(f'8{el[:3]}45{el[3:]}')
-                    else:
-                        temp_.append(el)
-                temp = temp_
-                    # if 4 < len(el) < 10: print(el, person.get('Рабочий'), person.get('Внутренний телефон'), sep=' $ ')
-                phone_number = ' , '.join(temp)
-                if additional_number:
-                    additional_numbers = self.process_internal_phone_field(additional_number)
-                    if len(additional_numbers) > 1:
-                        additional_number = ','.join(additional_numbers)
-                    else:
-                        additional_number = additional_numbers[0] 
-                    phone_number = f'{phone_number}: {additional_number}'
-                # phone_number = phone_number.replace(' ,', ',')
-                # if '496' in phone_number: print(phone_number, person.get('Внутренний телефон'), sep='=')
-                # phone_number = phone_number.replace(' ', '')
-                # phone_number = phone_number.split(',')
-                # for p in phone_number:
-                #     p.split('доб.')
-                # if len(p) 
-                # if len(phone_number) == 1: phone_number = phone_number[0]
-                phone_numbers.append(phone_number)
-        print(self.process_phone_numbers(phone_numbers))
-        return phone_numbers
+            department = person.get('Подразделения')
+            building = person.get('Корпус')
+            office = person.get('Комната')
+            hyperlinks = person.get('hyperlinks')
+            hrefs = [h for h in hyperlinks if h.startswith('https://jiht.ru')]
+            department = [d.strip() for d in department.split(',')]
+            for d in department:
+                if d in departments:
+                    departments[d]['amount'] += 1
+                    if f'{building}: {office}' not in departments[d]['office']:
+                        departments[d]['office'].append(f'{building}: {office}')
+                else:
+                    departments[d] = {}
+                    departments[d]['amount'] = 1
+                    departments[d]['office'] = [f'{building}: {office}']
+                    departments[d]['hrefs'] = []
+                for h in hrefs:
+                    if h not in departments[d]['hrefs']:
+                        departments[d]['hrefs'].append(h)
+        for k in sorted(departments.keys()):
+            print(f'{k}: {departments[k]["amount"]}')
+        print(len(departments))
+        print(sum([d['amount'] for d in departments.values()]))
+        return departments
 
     def export_json(self, data, filename: str) -> None:
         try:
@@ -220,9 +185,10 @@ class StaffProcessor:
 def test() -> None:
     staff_processor = StaffProcessor()
     staff = staff_processor.import_staff('staff.json')
-    phone_numbers = staff_processor.process_phone_numbers(staff)
-    # phone_numbers = staff_processor.extract_phone_numbers(staff)
-    staff_processor.export_json(phone_numbers, 'phones.json')
+    # phone_numbers = staff_processor.process_phone_numbers(staff)
+    # staff_processor.export_json(phone_numbers, 'phones.json')
+    departments = staff_processor.process_departments(staff)
+    staff_processor.export_json(sorted(departments.items()), 'departments.json')
     # staff_processor.process_staff(staff)
 
 if __name__ == '__main__':
