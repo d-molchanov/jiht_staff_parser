@@ -22,28 +22,92 @@ class StaffProcessor:
             logging.error('Unable to find %s.', filename)
         return staff
 
-    def process_phone_numbers(self, phone_numbers: List[str]) -> str:
+    def process_phone_numbers(self, staff: List[Dict[str, str]]) -> List[Dict[str, str]]:
         # {';', '-', 'о', ')', '+', ',', 'ф', ' ', 'д', '.', 'б', '('}
-        result = set()
-        for phone_number in phone_numbers:
-            for ch in phone_number:
-                if not ch.isdecimal():
-                    result.add(ch)
+        result = []
+        for person in staff:
+            phone_field = person.get('Рабочий')
+            internal_field = person.get('Внутренний телефон')
+            str_work_phones = ''
+            str_internal_phones = ''
+            if phone_field:
+                phone_numbers = self.process_work_phone_field(phone_field)
+                work_phones = phone_numbers.get('work_phones')
+                internal_phones = phone_numbers.get('internal_phones')
+                if work_phones:
+                    str_work_phones = ','.join(work_phones)
+                if internal_phones:
+                    str_internal_phones = ','.join(internal_phones)
+            str_internal_field = ''
+            if internal_field:
+                str_internal_field = ','.join(self.process_internal_phone_field(internal_field))
+            str_result = f'{str_work_phones}: {str_internal_phones}; {str_internal_field}'
+            if str_result != ': ; ':
+                result.append(str_result)
         return result
 
-    def process_additional_number(self, phone_number: str) -> str:
-        phone_number = phone_number.replace('-', '')
+    def process_internal_phone_field(self, phone_number: str) -> str:
         phone_number = phone_number.strip()
+        phone_number = phone_number.replace('-', '')
         phone_number = phone_number.replace(' ', ',')
+        phone_number = phone_number.replace('/', ',')
         phone_number = phone_number.replace('.', '')
-        temp = phone_number.split(',')
-        temp = [f'0{el}' if len(el) == 3 else el for el in temp]
-        if len(temp) > 1:
-            return ','.join(temp)
+        phone_numbers = [phone for phone in phone_number.split(',') if phone.isdecimal()]
+        return [f'0{phone}' if len(phone) == 3 else phone for phone in phone_numbers]
+        
+
+    def process_work_phone_field(self, phone_field: str) -> List[str]:
+        internal_phones = []
+        if 'доб.' in phone_field:
+            work_phone, internal_phone = phone_field.split('доб.')
+            internal_phones = self.process_internal_phone_field(
+                internal_phone
+            )
         else:
-            return temp[0]
-
-
+            work_phone = phone_field
+        work_phone = work_phone.replace('8(', '(')
+        work_phone = work_phone.replace('8 (', '(')
+        work_phone = work_phone.replace('+7', '')
+        work_phone = work_phone.replace('+7 ', '')
+        work_phone = work_phone.replace(';', '(')
+        work_phone = work_phone.replace('ф.', '(')
+        work_phone = work_phone.replace('-', '')
+        work_phone = work_phone.replace('.', '')
+        work_phone = work_phone.replace(',', '(')
+        work_phone = work_phone.replace(')', '')
+        work_phones_ = [
+            phone.replace(' ', '') for phone in work_phone.split('(')
+        ]
+        work_phones_ = [phone for phone in work_phones_ if phone]
+        # temp = [el.replace(')', '') for el in temp]
+        # temp = [el.replace(',', '') for el in temp]
+        work_phones = []
+        for phone in work_phones_:
+            if len(phone) == 3:
+                internal_phones.append(f'0{phone}')
+            elif len(phone) == 4:
+                internal_phones.append(phone)
+            elif len(phone) == 7:
+                work_phones.append(f'8495{phone}')
+            elif len(phone) == 8:
+                # Этот выбор сделан из-за ошибки на сайте, вообще нужно построить
+                # базу данных на основе информации о подразделениях, искать там 
+                # сотрудников схожих подразделений и подставлять телефоны и коды городов.
+                work_phones.append(f'8{phone[:3]}45{phone[3:]}')
+            elif len(phone) == 10:
+                work_phones.append(f'8{phone}')
+            else:
+                work_phones.append(phone)
+        result = {}
+        if work_phones:
+            result['work_phones'] = work_phones
+        if internal_phones:
+            result['internal_phones'] = internal_phones
+        # phone_field = ' , '.join(temp)
+        # if additional_number:
+        #     additional_number = self.process_internal_phone_field(additional_number)
+        #     phone_field = f'{phone_field}: {additional_number}'
+        return result
 
     def extract_phone_numbers(self, staff: List[Dict[str, str]]) -> List[str]:
         phone_numbers = []
@@ -90,7 +154,11 @@ class StaffProcessor:
                     # if 4 < len(el) < 10: print(el, person.get('Рабочий'), person.get('Внутренний телефон'), sep=' $ ')
                 phone_number = ' , '.join(temp)
                 if additional_number:
-                    additional_number = self.process_additional_number(additional_number)
+                    additional_numbers = self.process_internal_phone_field(additional_number)
+                    if len(additional_numbers) > 1:
+                        additional_number = ','.join(additional_numbers)
+                    else:
+                        additional_number = additional_numbers[0] 
                     phone_number = f'{phone_number}: {additional_number}'
                 # phone_number = phone_number.replace(' ,', ',')
                 # if '496' in phone_number: print(phone_number, person.get('Внутренний телефон'), sep='=')
@@ -152,7 +220,8 @@ class StaffProcessor:
 def test() -> None:
     staff_processor = StaffProcessor()
     staff = staff_processor.import_staff('staff.json')
-    phone_numbers = staff_processor.extract_phone_numbers(staff)
+    phone_numbers = staff_processor.process_phone_numbers(staff)
+    # phone_numbers = staff_processor.extract_phone_numbers(staff)
     staff_processor.export_json(phone_numbers, 'phones.json')
     # staff_processor.process_staff(staff)
 
