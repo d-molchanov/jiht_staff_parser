@@ -2,10 +2,18 @@ import json
 from typing import List, Dict
 import logging
 
+from dataclasses import dataclass
+
 logging.basicConfig(
     format='%(asctime)s %(levelname)s:\t%(message)s',
     level=logging.INFO
 )
+
+@dataclass
+class Department:
+    name: str
+    page: str
+
 
 class StaffProcessor:
 
@@ -190,6 +198,12 @@ def test() -> None:
     departments = staff_processor.process_departments(staff)
     staff_processor.export_json(dict(sorted(departments.items())), 'departments.json')
     # staff_processor.process_staff(staff)
+    d1 = Department(name='Lab1', page='https://example.com/lab1')
+    d2 = Department(name='Lab2', page='https://example.com/lab2')
+    d3 = Department(name='Lab1', page='https://example.com/lab1')
+
+    print({f'{d1}': 1})
+
 
 if __name__ == '__main__':
     test()
