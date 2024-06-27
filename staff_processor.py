@@ -112,25 +112,25 @@ class StaffProcessor:
     def process_departments(self, staff: List[Dict[str, str]]) -> List[Dict[str, str]]:
         departments = {}
         for person in staff:
-            department = person.get('Подразделения')
+            departments_ = person.get('Подразделения')
             building = person.get('Корпус')
             office = person.get('Комната')
             hyperlinks = person.get('hyperlinks')
-            hrefs = [h for h in hyperlinks if h.startswith('https://jiht.ru')]
-            department = [d.strip() for d in department.split(',')]
-            for d in department:
+            # hrefs = [h for h in hyperlinks if h.startswith('https://jiht.ru')]
+            for d, v in departments_.items():
                 if d in departments:
                     departments[d]['amount'] += 1
                     if f'{building}: {office}' not in departments[d]['office']:
                         departments[d]['office'].append(f'{building}: {office}')
                 else:
                     departments[d] = {}
+                    departments[d]['href'] = v 
                     departments[d]['amount'] = 1
                     departments[d]['office'] = [f'{building}: {office}']
-                    departments[d]['hrefs'] = []
-                for h in hrefs:
-                    if h not in departments[d]['hrefs']:
-                        departments[d]['hrefs'].append(h)
+                    # departments[d]['hrefs'] = []
+                # for h in hrefs:
+                #     if h not in departments[d]['hrefs']:
+                #         departments[d]['hrefs'].append(h)
         for k in sorted(departments.keys()):
             print(f'{k}: {departments[k]["amount"]}')
         print(len(departments))
@@ -188,7 +188,7 @@ def test() -> None:
     # phone_numbers = staff_processor.process_phone_numbers(staff)
     # staff_processor.export_json(phone_numbers, 'phones.json')
     departments = staff_processor.process_departments(staff)
-    staff_processor.export_json(sorted(departments.items()), 'departments.json')
+    staff_processor.export_json(dict(sorted(departments.items())), 'departments.json')
     # staff_processor.process_staff(staff)
 
 if __name__ == '__main__':

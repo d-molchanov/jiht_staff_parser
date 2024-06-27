@@ -184,21 +184,30 @@ class StaffParser:
     #     return cookies
 
     def parse_person_properties(self, properties: webdriver.remote.webelement.WebElement) -> dict:
-        splited_props = properties.text.splitlines()
         result = {}
         other = []
         hyperlinks = []
-        for p in splited_props:
+        for p in properties.text.splitlines():
             col_index = p.find(':')
             if col_index == -1:
                 other.append(p)
             else:
-                key = p[:col_index]
-                value = p[col_index+1:]
+                key = p[:col_index].strip()
+                value = p[col_index+1:].strip()
                 result[key] = value.strip()
         hrefs = properties.find_elements(By.TAG_NAME, 'a')
+        departments = {}
         for h in hrefs:
-            hyperlinks.append(h.get_attribute('href'))
+            href = h.get_attribute('href')
+            if href.startswith('https://jiht.ru'):
+                departments[f'{h.text}'] = href
+            else:
+                if not href.startswith('mailto:') and not href.startswith('callto:'):
+                    hyperlinks.append(href)
+        if departments:
+            result['Подразделения'] = departments
+        else:
+            result['Подразделения'] = {result['Подразделения']: None}
         if other:
             result['other'] = other
         if hyperlinks:
@@ -330,6 +339,7 @@ def test():
 
 
     # URL = 'https://jiht.ru/'
+    # URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=2'
     URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=1&filter=Y&set_filter=Y&PAGEN_1=2'
     staff_parser = StaffParser()
     staff_parser.get_staff(URL)
