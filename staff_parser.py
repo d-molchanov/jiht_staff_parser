@@ -6,6 +6,7 @@ from time import perf_counter
 from typing import List, Union, Dict, Optional
 import logging
 from dotenv import load_dotenv, dotenv_values
+import requests
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -334,15 +335,37 @@ class StaffParser:
             else:
                 print(i+1, el['name'], ':', el['value'])
 
+    def get_raw_staff(self, url: str):
+        payload = {
+            'backurl': "/",
+            'AUTH_FORM': "Y",
+            'TYPE': "AUTH",
+            'USER_LOGIN': "Login",
+            'USER_PASSWORD': "password",
+            'Login': "Войти+на+сайт"
+        }
+        URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=1&filter=Y&set_filter=Y&PAGEN_1=1'
+        with requests.Session() as session:
+            res = session.post('https://jiht.ru', data=payload)
+            result = []
+            for i in range(1, 48):
+                print(i)
+                res = session.get(f'{URL}{i}')
+                result.append(res.text)
+            with open('output.html', 'w') as f:
+                f.write('\n'.join(result))
+            print(res.cookies)
+
 
 def test():
 
 
     # URL = 'https://jiht.ru/'
     # URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=2'
-    URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=1&filter=Y&set_filter=Y&PAGEN_1=2'
+    URL = 'https://jiht.ru/staff/structure.php?set_filter_structure=Y&structure_UF_DEPARTMENT=1&filter=Y&set_filter=Y&PAGEN_1=1'
     staff_parser = StaffParser()
-    staff_parser.get_staff(URL)
+    staff_parser.get_raw_staff(URL)
+    # staff_parser.get_staff(URL)
     # browser = staff_parser.create_browser()
     # staff_parser.log_in(browser, '.env', URL)
     # staff_parser.log_in(browser, '.env_without_cookies', URL)
