@@ -1,18 +1,16 @@
 import json
 from typing import List, Dict
 import logging
+from bs4 import BeautifulSoup as bs
+from bs4.element import Tag 
 
-from dataclasses import dataclass
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s:\t%(message)s',
     level=logging.INFO
 )
 
-@dataclass
-class Department:
-    name: str
-    page: str
+
 
 
 class StaffProcessor:
@@ -121,6 +119,7 @@ class StaffProcessor:
         departments = {}
         for person in staff:
             departments_ = person.get('Подразделения')
+            if len(departments_) > 1: print(person)
             building = person.get('Корпус')
             office = person.get('Комната')
             hyperlinks = person.get('hyperlinks')
@@ -190,19 +189,139 @@ class StaffProcessor:
         print(non_decimal_chars)
         print(fields)
 
+    # def parse_employee(self, div: str) -> dict:
+    def parse_employee(self, div: Tag) -> dict:
+        result = {}
+        name = div.find(class_='bx-user-name')
+        if name:
+            name = name.text.strip()
+            result['ФИО'] = name
+        position = div.find(class_='bx-user-post')
+        if position:
+            position = position.text.strip()
+            result['Должность'] = position
+        properties = div.find(class_='bx-user-properties')
+        props = []
+        for i, el in enumerate(properties.children):
+            if isinstance(el, str):
+                el = el.replace('\n', ' ').strip()
+                if el and el != ',':
+                    props.append(el)
+            if isinstance(el, Tag):
+                if el.name != 'br':
+                    props.append(el)
+        p = {}
+        key = None
+        value = {}
+        for el in props:
+            if isinstance(el, str):
+                if el.endswith(':'):
+                    if value:
+                        result[key] = value
+                    key = el[:-1]
+                    value = {}
+                else:
+                    if value:
+                        result[key] = value
+                    value = {}
+                    ind = el.find(':')
+                    result[el[:ind].strip()] = el[ind+1:].strip()
+            else:
+                if el.name == 'a':
+                    k = el.text.strip()
+                    v = el['href']
+                    value[k] = v
+        for k, v in result.items():
+            if isinstance(v, dict) and k != 'Подразделения':
+                result[k] = list(v.keys())
+        r = {}
+        substitution = {
+            'ФИО': 'full_name',
+            'Должность': 'position',
+            'E-Mail': 'email',
+            'Подразделения': 'department',
+            'Рабочий': 'work_phone',
+            'Корпус': 'building',
+            'Комната': 'office',
+            'Внутренний телефон': 'internal_phone',
+            'Ученое звание': 'title',
+            'Ученая степень': 'degree'#,
+            # 'WWW-страница': 'website',
+            # 'ICQ': 'icq'
+        }
+        notes = []
+        for k, v in result.items():
+            if k in substitution:
+                if isinstance(v, list):
+                    if len(v) == 1:
+                        v = v[0]
+                r[substitution[k]] = v
+            else:
+                if isinstance(v, list):
+                    v = ', '.join(v)
+                notes.append(f'{k}: {v}')
+        if notes:
+            r['notes'] = notes
+        image = div.find('img')
+        if image:
+            r['image_url'] = image['src']
+        return r
+
+    def reduce_data(self, filename: str) -> None:
+        with open(filename, 'r') as f:
+            soup = bs(f, 'html.parser')
+            divs = soup.find_all('div', class_='bx-user-info')
+            # with open('divs.html', 'w') as w:
+            #     w.write('\n'.join([d.prettify() for d in divs]))
+            print(len(divs))
+            # staff = [self.parse_employee(div) for div in divs[74:75]]
+            staff = [self.parse_employee(div) for div in divs]
+            keys = []
+            for i, p in enumerate(staff):
+                for k in p.keys():
+                    if k not in keys:
+                        keys.append(k)
+                ph = p.get('internal_phone')
+                ph = p.get('work_phone')
+                ph = p.get('email')
+                if ph:
+                    if ',' in ph:
+                        print(p['full_name'], ph)
+            print(keys)
+            return staff
+                # substitution = {
+                #     'ФИО': 'full_name',
+                #     'Должность': 'position',
+                #     'E-Mail': 'email',
+                #     'Подразделения': 'department',
+                #     'Рабочий': 'work_phone',
+                #     'Корпус': 'building',
+                #     'Комната': 'office',
+                #     'Внутренний телефон': 'internal_phone',
+                #     'Ученое звание': 'title',
+                #     'Ученая степень': 'degree',
+                #     'WWW-страница': 'website',
+                #    # 'ICQ': 'icq'
+                # }
+                
+
 def test() -> None:
     staff_processor = StaffProcessor()
-    staff = staff_processor.import_staff('staff.json')
-    # phone_numbers = staff_processor.process_phone_numbers(staff)
-    # staff_processor.export_json(phone_numbers, 'phones.json')
-    departments = staff_processor.process_departments(staff)
-    staff_processor.export_json(dict(sorted(departments.items())), 'departments.json')
-    # staff_processor.process_staff(staff)
-    d1 = Department(name='Lab1', page='https://example.com/lab1')
-    d2 = Department(name='Lab2', page='https://example.com/lab2')
-    d3 = Department(name='Lab1', page='https://example.com/lab1')
+    staff_1 = staff_processor.import_staff('staff.json')
+    staff_2 = staff_processor.reduce_data('divs.html')
+    names_1 = [person['ФИО'] for person in staff_1]
+    names_2 = [person['full_name'] for person in staff_2]
+    print(len(names_1), len(names_2))
 
-    print({f'{d1}': 1})
+    n = set(names_1) ^ set(names_2)
+    # print(*sorted(list(n)), sep='\n')
+    # staff_processor.reduce_data('reduced_divs.html')
+    # staff = staff_processor.import_staff('staff.json')
+    # # phone_numbers = staff_processor.process_phone_numbers(staff)
+    # # staff_processor.export_json(phone_numbers, 'phones.json')
+    # departments = staff_processor.process_departments(staff)
+    # staff_processor.export_json(dict(sorted(departments.items())), 'departments.json')
+    # # staff_processor.process_staff(staff)
 
 
 if __name__ == '__main__':
