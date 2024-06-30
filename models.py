@@ -31,6 +31,10 @@ from sql_classes import InternalPhone
 from sql_classes import Building
 from sql_classes import Office
 
+from data_classes import DCDepartment
+from data_classes import DCBuilding
+from data_classes import DCOffice
+
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)s:\t%(message)s',
@@ -109,22 +113,23 @@ class DatabaseManager:
             buildings = []
             labs = []
             for entry in staff:
-                departments = entry.get('lab')
+                departments = entry.get('Подразделения')
                 for k, v in departments.items():
-                    d = Department(
+                    d = DCDepartment(
                         department_name=k,
                         department_page=v
                     )
                     if d not in labs:
                         labs.append(d)
                 # offices = entry.get('office')
-                building = entry.get('building')
-                b = Building(
-                    building_name=building[0],
-                    building_address=None
-                )
-                if b not in buildings:
-                    buildings.append(b)
+                building = entry.get('Корпус')
+                if building:
+                    b = Building(
+                        building_name=building[0],
+                        building_address=None
+                    )
+                    if b not in buildings:
+                        buildings.append(b)
             config = {'department_name': '1', 'department_page': '2'}
             print(len(labs), len(buildings), Department(**config)==Department(**config))
             db.add_all(labs)
@@ -148,7 +153,8 @@ def test() -> None:
     database_manager = DatabaseManager()
     engine = database_manager.create_engine_by_dbm(DB_URL)
     database_manager.create_tables(engine)
-    staff = database_manager.import_json('syntetic_staff.json')
+    staff = database_manager.import_json('staff.json')
+    # staff = database_manager.import_json('syntetic_staff.json')
     database_manager.add_staff(engine, staff[:10])
     # database_manager.add_records(engine, staff[:10])
     # database_manager.delete_by_id(6, Employee, engine)
