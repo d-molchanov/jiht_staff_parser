@@ -2,7 +2,7 @@ import json
 from typing import List, Dict
 import logging
 from bs4 import BeautifulSoup as bs
-from bs4.element import Tag 
+from bs4.element import Tag, NavigableString
 
 
 logging.basicConfig(
@@ -85,8 +85,6 @@ class StaffProcessor:
             phone.replace(' ', '') for phone in work_phone.split('(')
         ]
         work_phones_ = [phone for phone in work_phones_ if phone]
-        # temp = [el.replace(')', '') for el in temp]
-        # temp = [el.replace(',', '') for el in temp]
         work_phones = []
         for phone in work_phones_:
             if len(phone) == 3:
@@ -189,52 +187,55 @@ class StaffProcessor:
         print(non_decimal_chars)
         print(fields)
 
-    # def parse_employee(self, div: str) -> dict:
-    def parse_employee(self, div: Tag) -> dict:
+    def _handle_tag_a(self, web_element: Tag):
+        return web_element.text.strip(), web_element['href']
+        # return web_element if web_element.name != 'br' else None
+            
+    def _handle_navigable_string(self, web_element: NavigableString):
+        result = web_element.replace('\n', ' ').strip()
+        return NavigableString(result) if result and result != ',' else None
+    
+    def filter_web_elements(self, web_element):
+        handlers = {
+            'a': self._handle_tag_a,
+            'None': self._handle_navigable_string
+        }
+        handler = handlers.get(str(web_element.name))
+        return handler(web_element) if handler else None
+
+
+
+    def parse_employee_properties(self, web_element: Tag):
+        properties = []
+        for el in web_element.children:
+            # print(el.name, f'`{el}`')
+            property_ = self.filter_web_elements(el)
+            if property_:
+                properties.append(property_)
+                print(type(property_))
+        print(*[f'{i}: `{p}`' for i, p in enumerate(properties)], sep='\n')
+
+        return properties
+
+    def _handle_str(self, input_str: str):
+        if input_str.strip().endswith(':'):
+            return  input_str[:-1]
+        return tuple([el.strip() for el in input_str.split(':', 1)])
+
+    def parse_props(self, props):
         result = {}
-        name = div.find(class_='bx-user-name')
-        if name:
-            name = name.text.strip()
-            result['ФИО'] = name
-        position = div.find(class_='bx-user-post')
-        if position:
-            position = position.text.strip()
-            result['Должность'] = position
-        properties = div.find(class_='bx-user-properties')
-        props = []
-        for i, el in enumerate(properties.children):
-            if isinstance(el, str):
-                el = el.replace('\n', ' ').strip()
-                if el and el != ',':
-                    props.append(el)
-            if isinstance(el, Tag):
-                if el.name != 'br':
-                    props.append(el)
-        p = {}
-        key = None
-        value = {}
         for el in props:
             if isinstance(el, str):
-                if el.endswith(':'):
-                    if value:
-                        result[key] = value
-                    key = el[:-1]
-                    value = {}
-                else:
-                    if value:
-                        result[key] = value
-                    value = {}
-                    ind = el.find(':')
-                    result[el[:ind].strip()] = el[ind+1:].strip()
-            else:
-                if el.name == 'a':
-                    k = el.text.strip()
-                    v = el['href']
-                    value[k] = v
-        for k, v in result.items():
-            if isinstance(v, dict) and k != 'Подразделения':
-                result[k] = list(v.keys())
-        r = {}
+                res = self._handle_str(el)
+                if isinstance(res, tuple):
+                    result[res[0]] = res[1]
+                if isinstance(res, str):
+                    result[res] = {}
+            if isinstance(el, tuple):
+                result[res][el[0]] = el[1]
+        return result
+
+    def format_employee_information(self, properties: dict):
         substitution = {
             'ФИО': 'full_name',
             'Должность': 'position',
@@ -249,23 +250,49 @@ class StaffProcessor:
             # 'WWW-страница': 'website',
             # 'ICQ': 'icq'
         }
+        result = {}
         notes = []
-        for k, v in result.items():
+        for k, v in properties.items():
             if k in substitution:
                 if isinstance(v, list):
                     if len(v) == 1:
                         v = v[0]
-                r[substitution[k]] = v
+                result[substitution[k]] = v
             else:
                 if isinstance(v, list):
                     v = ', '.join(v)
                 notes.append(f'{k}: {v}')
         if notes:
-            r['notes'] = notes
+            result['notes'] = ';\n'.join(notes)
+        return result
+
+    # def parse_employee(self, div: str) -> dict:
+    def parse_employee(self, div: Tag) -> dict:
+        result = {}
+        name = div.find(class_='bx-user-name')
+        if name:
+            name = name.text.strip()
+            result['ФИО'] = name
+        position = div.find(class_='bx-user-post')
+        if position:
+            position = position.text.strip()
+            result['Должность'] = position
+        properties = div.find(class_='bx-user-properties')
+        props = self.parse_employee_properties(properties)
+        p = self.parse_props(props)
+        result.update(p)
+        for k, v in result.items():
+            print(f'{k} -> {v}')
+
+            if isinstance(v, dict) and k != 'Подразделения':
+                result[k] = list(v.keys())
+        result = self.format_employee_information(result)
         image = div.find('img')
         if image:
-            r['image_url'] = image['src']
-        return r
+            result['image_url'] = image['src']
+        print(result)
+        # Здесь уже нужно возвращать dataclass DCEmployee
+        return result
 
     def reduce_data(self, filename: str) -> None:
         with open(filename, 'r') as f:
@@ -274,46 +301,37 @@ class StaffProcessor:
             # with open('divs.html', 'w') as w:
             #     w.write('\n'.join([d.prettify() for d in divs]))
             print(len(divs))
-            # staff = [self.parse_employee(div) for div in divs[74:75]]
-            staff = [self.parse_employee(div) for div in divs]
-            keys = []
-            for i, p in enumerate(staff):
-                for k in p.keys():
-                    if k not in keys:
-                        keys.append(k)
-                ph = p.get('internal_phone')
-                ph = p.get('work_phone')
-                ph = p.get('email')
-                if ph:
-                    if ',' in ph:
-                        print(p['full_name'], ph)
-            print(keys)
+            staff = [self.parse_employee(div) for div in divs[74:75]]
+            # staff = [self.parse_employee(div) for div in divs[78:79]]
+            # staff = [self.parse_employee(div) for div in divs]
+            for person in staff:
+                internal_phone = person.get('internal_phone')
+                if internal_phone:
+                    person['internal_phone'] = self.process_internal_phone_field(internal_phone)
+                work_phone = person.get('work_phone')
+                if work_phone:
+                    work_phone = self.process_work_phone_field(work_phone)
+                    additional_internal_phone = work_phone.get('internal_phones')
+                    if additional_internal_phone:
+                        if internal_phone:
+                            person['internal_phone'].extend(additional_internal_phone)
+                        else:
+                            person['internal_phone'] = additional_internal_phone
+                    work_phone_ = work_phone.get('work_phones')
+                    if work_phone_:
+                        person['work_phone'] = work_phone_
+                building = person.get('building')
+                if building:
+                    if ',' in building:
+                        print(person)
             return staff
-                # substitution = {
-                #     'ФИО': 'full_name',
-                #     'Должность': 'position',
-                #     'E-Mail': 'email',
-                #     'Подразделения': 'department',
-                #     'Рабочий': 'work_phone',
-                #     'Корпус': 'building',
-                #     'Комната': 'office',
-                #     'Внутренний телефон': 'internal_phone',
-                #     'Ученое звание': 'title',
-                #     'Ученая степень': 'degree',
-                #     'WWW-страница': 'website',
-                #    # 'ICQ': 'icq'
-                # }
                 
 
 def test() -> None:
     staff_processor = StaffProcessor()
     staff_1 = staff_processor.import_staff('staff.json')
     staff_2 = staff_processor.reduce_data('divs.html')
-    names_1 = [person['ФИО'] for person in staff_1]
-    names_2 = [person['full_name'] for person in staff_2]
-    print(len(names_1), len(names_2))
-
-    n = set(names_1) ^ set(names_2)
+    # print(staff_2[75])
     # print(*sorted(list(n)), sep='\n')
     # staff_processor.reduce_data('reduced_divs.html')
     # staff = staff_processor.import_staff('staff.json')
