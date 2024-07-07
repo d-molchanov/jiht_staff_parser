@@ -1,21 +1,21 @@
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import json
 from typing import Optional, List, Dict
 
-# @dataclass
-# class DCEmployee:
-#     full_name: str
-#     position: str
-#     email: list
-#     work_phone: list 
-#     department: list
-#     building: list
-#     office: list
-#     internal_phone: list
-#     title: str
-#     degree: str
-#     image_url: str
-#     notes: list
+@dataclass
+class DCEmployee:
+    full_name: Optional[str] = None
+    department: List[str] = field(default_factory=list)
+    position: Optional[str] = None
+    degree: Optional[str] = None
+    title: Optional[str] = None
+    image_url: Optional[str] = None
+    email: Optional[str] = None
+    work_phone: List[str] = field(default_factory=list) 
+    internal_phone: List[str] = field(default_factory=list)
+    building: Optional[str] = None
+    office: List[str] = field(default_factory=list)
+    notes: Optional[str] = None
 
 @dataclass
 class DCDepartment:
@@ -43,5 +43,7 @@ def test():
     print(d3)
     s = json.dumps(asdict(d3))
     print(s)
+    e1 = DCEmployee(full_name='Иванов Иван', email='example@domain.com')
+    print(e1)
 if __name__ == '__main__':
     test()
