@@ -189,7 +189,6 @@ class StaffProcessor:
 
     def _handle_tag_a(self, web_element: Tag):
         return web_element.text.strip(), web_element['href']
-        # return web_element if web_element.name != 'br' else None
             
     def _handle_navigable_string(self, web_element: NavigableString):
         result = web_element.replace('\n', ' ').strip()
@@ -202,8 +201,6 @@ class StaffProcessor:
         }
         handler = handlers.get(str(web_element.name))
         return handler(web_element) if handler else None
-
-
 
     def parse_employee_properties(self, web_element: Tag):
         properties = []
@@ -246,13 +243,16 @@ class StaffProcessor:
             'Комната': 'office',
             'Внутренний телефон': 'internal_phone',
             'Ученое звание': 'title',
-            'Ученая степень': 'degree'#,
+            'Ученая степень': 'degree',
             # 'WWW-страница': 'website',
             # 'ICQ': 'icq'
         }
         result = {}
         notes = []
         for k, v in properties.items():
+            print(f'{k} -> {v}')
+            if isinstance(v, dict) and k != 'Подразделения':
+                v = list(v.keys())
             if k in substitution:
                 if isinstance(v, list):
                     if len(v) == 1:
@@ -281,11 +281,6 @@ class StaffProcessor:
         props = self.parse_employee_properties(properties)
         p = self.parse_props(props)
         result.update(p)
-        for k, v in result.items():
-            print(f'{k} -> {v}')
-
-            if isinstance(v, dict) and k != 'Подразделения':
-                result[k] = list(v.keys())
         result = self.format_employee_information(result)
         image = div.find('img')
         if image:
