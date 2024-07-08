@@ -295,7 +295,7 @@ class StaffProcessor:
         return result
 
     def reduce_data(self, filename: str) -> None:
-        with open(filename, 'r') as f:
+        with open(filename, 'r', encoding='utf-8') as f:
             soup = bs(f, 'html.parser')
             divs = soup.find_all('div', class_='bx-user-info')
             # with open('divs.html', 'w') as w:
