@@ -188,11 +188,20 @@ class StaffProcessor:
         print(fields)
 
     def _handle_tag_a(self, web_element: Tag):
-        return web_element.text.strip(), web_element['href']
+        result = {
+            'name': web_element.name,
+            'text': web_element.text.strip(),
+            'href': web_element['href']
+        }
+        return result
+
             
     def _handle_navigable_string(self, web_element: NavigableString):
-        result = web_element.replace('\n', ' ').strip()
-        return NavigableString(result) if result and result != ',' else None
+        result = {
+            'name': 'str',
+            'text': web_element.replace('\n', ' ').strip()
+        }
+        return result if result['text'] and result['text'] != ',' else None
     
     def filter_web_elements(self, web_element):
         handlers = {
@@ -205,31 +214,32 @@ class StaffProcessor:
     def parse_employee_properties(self, web_element: Tag):
         properties = []
         for el in web_element.children:
-            # print(el.name, f'`{el}`')
             property_ = self.filter_web_elements(el)
             if property_:
                 properties.append(property_)
-                print(type(property_))
         print(*[f'{i}: `{p}`' for i, p in enumerate(properties)], sep='\n')
 
         return properties
 
     def _handle_str(self, input_str: str):
-        if input_str.strip().endswith(':'):
+        if input_str.endswith(':'):
             return  input_str[:-1]
         return tuple([el.strip() for el in input_str.split(':', 1)])
+
+    def _update_props(self, props, p):
+        if isinstance(p, tuple):
+            props[p[0]] = p[1]
+        if isinstance(p, str):
+            props[p] = {}
 
     def parse_props(self, props):
         result = {}
         for el in props:
-            if isinstance(el, str):
-                res = self._handle_str(el)
-                if isinstance(res, tuple):
-                    result[res[0]] = res[1]
-                if isinstance(res, str):
-                    result[res] = {}
-            if isinstance(el, tuple):
-                result[res][el[0]] = el[1]
+            if el['name'] == 'str':
+                res = self._handle_str(el['text'])
+                self._update_props(result, res)
+            if el['name'] == 'a':
+                result[res][el['text']] = el['href']
         return result
 
     def format_employee_information(self, properties: dict):
